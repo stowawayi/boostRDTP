@@ -1,0 +1,25 @@
+# Build
+build/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+*.o
+*.obj
+*.exe
+*.out
+*.log
+
+# Generated
+*.swp
+*.user
+*.DS_Store
+*.sublime*
+
+# IDEs
+.vscode/
+.idea/
+
+# Test output
+test-*
+output_file_*
