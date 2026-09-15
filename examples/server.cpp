@@ -4,13 +4,15 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <thread>
 
 namespace fs = std::filesystem;
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        std::cerr << "Usage: rdtp_server <folder>\n";
+    if (argc != 2 && argc != 3) {
+        std::cerr << "Usage: rdtp_server <folder> [bind-address]\n"
+                      "  bind-address defaults to :: (dual-stack IPv4+IPv6); pass an IPv4 address to bind IPv4 only.\n";
         return 1;
     }
 
@@ -19,9 +21,10 @@ int main(int argc, char* argv[]) {
         std::cerr << "Invalid folder." << std::endl;
         return 1;
     }
+    std::string bind_address = argc == 3 ? argv[2] : "::";
 
     boost::asio::io_context io_context;
-    rdtp::RDTPServer server(io_context, 9000);  // control channel defaults to port 9001
+    rdtp::RDTPServer server(io_context, 9000, 0, bind_address);  // control channel defaults to port 9001
 
     std::cout << "[Server] Waiting for receiver to connect..." << std::endl;
     server.accept();

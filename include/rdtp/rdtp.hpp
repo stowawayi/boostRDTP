@@ -16,6 +16,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace rdtp {
@@ -154,7 +155,12 @@ private:
 // the init handshake, sends file data over UDP, and retransmits on NACK.
 class RDTPServer {
 public:
-    RDTPServer(boost::asio::io_context& io_context, uint16_t data_port, uint16_t control_port = 0);
+    // bind_address may be an IPv4 or IPv6 literal ("0.0.0.0", "::", "::1",
+    // a specific interface address, ...); both sockets bind to whichever
+    // address family it resolves to. The default, "::", is dual-stack and
+    // accepts both IPv4 and IPv6 clients.
+    RDTPServer(boost::asio::io_context& io_context, uint16_t data_port, uint16_t control_port = 0,
+               const std::string& bind_address = "::");
 
     // Blocks until a receiver's TCP control connection arrives, then
     // performs the init handshake. If control_port was 0 at construction,

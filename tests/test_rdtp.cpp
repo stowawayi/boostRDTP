@@ -159,26 +159,24 @@ TEST(RDTPWireTest, RejectsBadSyncAndHeaderSize) {
 }
 
 // -----------------------------------------------------------------------
-// Localhost loopback integration test: real RDTPServer + RDTPClient over
-// 127.0.0.1, exercising the TCP control-channel handshake and the UDP data
-// channel end to end.
+// Loopback integration test: real RDTPServer + RDTPClient, exercising the
+// TCP control-channel handshake and the UDP data channel end to end.
+// Shared by the IPv4 and IPv6 variants below.
 // -----------------------------------------------------------------------
 
-TEST(RDTPIntegrationTest, LoopbackTwoSegmentFile) {
-    constexpr uint16_t data_port = 39555;
-    constexpr uint16_t control_port = 39556;
-
+void RunLoopbackTwoSegmentTransfer(const std::string& bind_address, const std::string& client_host,
+                                    uint16_t data_port, uint16_t control_port) {
     boost::asio::io_context server_io;
     boost::asio::io_context client_io;
 
-    rdtp::RDTPServer server(server_io, data_port, control_port);
+    rdtp::RDTPServer server(server_io, data_port, control_port, bind_address);
 
     std::thread server_accept_thread([&]() {
         server.accept();
         server.run_ack_loop([](const std::vector<uint32_t>&) {});
     });
 
-    rdtp::RDTPClient client(client_io, "127.0.0.1", data_port, control_port);
+    rdtp::RDTPClient client(client_io, client_host, data_port, control_port);
     client.connect();
     client.send_init(2048, 1000);
 
@@ -236,6 +234,38 @@ TEST(RDTPIntegrationTest, LoopbackTwoSegmentFile) {
     server.stop();
     receive_thread.join();
     server_accept_thread.join();
+}
+
+TEST(RDTPIntegrationTest, LoopbackTwoSegmentFileIPv4) {
+    RunLoopbackTwoSegmentTransfer("0.0.0.0", "127.0.0.1", 39555, 39556);
+}
+
+TEST(RDTPIntegrationTest, LoopbackTwoSegmentFileIPv6) {
+    RunLoopbackTwoSegmentTransfer("::1", "::1", 39565, 39566);
+}
+
+// A server bound to the IPv6 wildcard "::" is dual-stack: it accepts an
+// IPv4 client and, separately, an IPv6 client (each run gets its own fresh
+// RDTPServer/RDTPClient pair, but both bind_address="::").
+TEST(RDTPIntegrationTest, DualStackBindAcceptsIPv4Client) {
+    RunLoopbackTwoSegmentTransfer("::", "127.0.0.1", 39585, 39586);
+}
+
+TEST(RDTPIntegrationTest, DualStackBindAcceptsIPv6Client) {
+    RunLoopbackTwoSegmentTransfer("::", "::1", 39595, 39596);
+}
+
+// -----------------------------------------------------------------------
+// RDTPServer binds both its UDP data socket and TCP acceptor to whichever
+// address family bind_address resolves to.
+// -----------------------------------------------------------------------
+
+TEST(RDTPWireTest, ServerBindsIPv6WhenRequested) {
+    boost::asio::io_context io;
+    rdtp::RDTPServer server(io, 39575, 39576, "::1");
+    // Construction succeeding (no thrown boost::system::system_error) is
+    // the test: an IPv4-only bind would fail on an IPv6 address.
+    SUCCEED();
 }
 
 int main(int argc, char** argv) {

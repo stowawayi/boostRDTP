@@ -4,11 +4,22 @@
 #include <stdexcept>
 #include <vector>
 
+namespace {
+
+// Local UDP bind endpoint on whichever address family server_ip resolves
+// to, so an IPv6 server_ip gets a v6 socket and an IPv4 one gets a v4 socket.
+boost::asio::ip::udp::endpoint local_data_endpoint_for(const std::string& server_ip) {
+    bool v6 = boost::asio::ip::make_address(server_ip).is_v6();
+    return boost::asio::ip::udp::endpoint(v6 ? boost::asio::ip::udp::v6() : boost::asio::ip::udp::v4(), 0);
+}
+
+} // namespace
+
 namespace rdtp {
 
 RDTPClient::RDTPClient(boost::asio::io_context& io_context, const std::string& server_ip,
                         uint16_t server_data_port, uint16_t server_control_port)
-    : data_socket_(io_context, boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), 0)),
+    : data_socket_(io_context, local_data_endpoint_for(server_ip)),
       control_socket_(io_context) {
     server_data_endpoint_ = boost::asio::ip::udp::endpoint(boost::asio::ip::make_address(server_ip), server_data_port);
     uint16_t control_port = server_control_port != 0 ? server_control_port : static_cast<uint16_t>(server_data_port + 1);

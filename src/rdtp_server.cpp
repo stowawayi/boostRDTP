@@ -4,13 +4,46 @@
 #include <stdexcept>
 #include <vector>
 
+namespace {
+
+boost::asio::ip::udp::endpoint udp_bind_endpoint(const std::string& bind_address, uint16_t port) {
+    return boost::asio::ip::udp::endpoint(boost::asio::ip::make_address(bind_address), port);
+}
+
+boost::asio::ip::tcp::endpoint tcp_bind_endpoint(const std::string& bind_address, uint16_t port) {
+    return boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address(bind_address), port);
+}
+
+} // namespace
+
 namespace rdtp {
 
-RDTPServer::RDTPServer(boost::asio::io_context& io_context, uint16_t data_port, uint16_t control_port)
-    : data_socket_(io_context, boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), data_port)),
-      acceptor_(io_context, boost::asio::ip::tcp::endpoint(
-          boost::asio::ip::tcp::v4(), control_port != 0 ? control_port : static_cast<uint16_t>(data_port + 1))),
+RDTPServer::RDTPServer(boost::asio::io_context& io_context, uint16_t data_port, uint16_t control_port,
+                        const std::string& bind_address)
+    : data_socket_(io_context),
+      acceptor_(io_context),
       control_socket_(io_context) {
+    boost::asio::ip::udp::endpoint data_endpoint = udp_bind_endpoint(bind_address, data_port);
+    boost::asio::ip::tcp::endpoint control_endpoint = tcp_bind_endpoint(
+        bind_address, control_port != 0 ? control_port : static_cast<uint16_t>(data_port + 1));
+
+    // On an IPv6 socket, IPV6_V6ONLY's OS default is platform-dependent
+    // (e.g. off on Linux, on on Windows). Explicitly disabling it makes
+    // "::" a real dual-stack bind -- IPv4 clients arrive as IPv4-mapped
+    // IPv6 addresses -- consistently across platforms.
+    data_socket_.open(data_endpoint.protocol());
+    if (data_endpoint.protocol() == boost::asio::ip::udp::v6()) {
+        data_socket_.set_option(boost::asio::ip::v6_only(false));
+    }
+    data_socket_.bind(data_endpoint);
+
+    acceptor_.open(control_endpoint.protocol());
+    if (control_endpoint.protocol() == boost::asio::ip::tcp::v6()) {
+        acceptor_.set_option(boost::asio::ip::v6_only(false));
+    }
+    acceptor_.set_option(boost::asio::socket_base::reuse_address(true));
+    acceptor_.bind(control_endpoint);
+    acceptor_.listen();
 }
 
 void RDTPServer::accept() {
@@ -25,9 +58,15 @@ void RDTPServer::accept() {
     std::vector<uint8_t> payload_buf(req_hdr.size);
     boost::asio::read(control_socket_, boost::asio::buffer(payload_buf));
     InitRequestPayload req = InitRequestPayload::from_wire(payload_buf.data());
-    client_data_endpoint_ = boost::asio::ip::udp::endpoint(
-        control_socket_.remote_endpoint().address(),
-        static_cast<uint16_t>(req.receiver_data_port));
+
+    // On a dual-stack ("::") data_socket_, send_to() needs a v6-family
+    // endpoint even for a v4 peer; map plain-v4 peer addresses to their
+    // v4-mapped-v6 form so sending back to an IPv4 client works.
+    boost::asio::ip::address peer_addr = control_socket_.remote_endpoint().address();
+    if (data_socket_.local_endpoint().protocol() == boost::asio::ip::udp::v6() && peer_addr.is_v4()) {
+        peer_addr = boost::asio::ip::make_address_v6(boost::asio::ip::v4_mapped, peer_addr.to_v4());
+    }
+    client_data_endpoint_ = boost::asio::ip::udp::endpoint(peer_addr, static_cast<uint16_t>(req.receiver_data_port));
 
     InitReplyPayload reply;
     reply.max_packet_size = max_packet_size_;
