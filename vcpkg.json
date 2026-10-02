@@ -1,0 +1,12 @@
+{
+  "name": "rdtp",
+  "version": "0.1.0",
+  "dependencies": [
+    "boost-asio",
+    "boost-system",
+    "boost-filesystem",
+    "boost-program-options",
+    "boost-endian",
+    "gtest"
+  ]
+}
