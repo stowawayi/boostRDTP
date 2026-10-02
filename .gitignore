@@ -1,3 +1,6 @@
+# Claude Code local-only instructions (not shared)
+CLAUDE.local.md
+
 # Build
 build/
 CMakeFiles/
